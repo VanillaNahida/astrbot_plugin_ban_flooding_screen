@@ -13,7 +13,7 @@ from astrbot.api.star import Context, Star, register
     "ban_flooding_the_screen",
     "香草味的纳西妲喵（VanillaNahida）",
     "刷屏禁言插件",
-    "1.0.0"
+    "1.0.2"
 )
 class BanFloodingTheScreenPlugin(Star):
     def __init__(self, context: Context, config: dict = None):
@@ -190,6 +190,8 @@ class BanFloodingTheScreenPlugin(Star):
         return {
             "group_id": gid_str,
             "enabled": gid_str in self.enabled_groups,
+            "detection_period": self.detection_period,
+            "message_threshold": self.message_threshold,
             "mute_time": self.mute_time,
             "enable_kick": self.enable_kick_repeat_offender,
             "kick_threshold": self.kick_threshold,
@@ -223,6 +225,8 @@ class BanFloodingTheScreenPlugin(Star):
         if not found:
             new_config = {
                 "group_id": gid_str,
+                "detection_period": self.detection_period,
+                "message_threshold": self.message_threshold,
                 "mute_time": self.mute_time,
                 "enable_kick": self.enable_kick_repeat_offender,
                 "kick_threshold": self.kick_threshold,
@@ -264,7 +268,8 @@ class BanFloodingTheScreenPlugin(Star):
         flood_state["messages"].append(event.message_str)
         
         # 检查是否达到阈值且未在处理刷屏禁言
-        if len(flood_state["messages"]) >= self.message_threshold and not flood_state["is_handling_flood"]:
+        message_threshold = config.get("message_threshold", self.message_threshold)
+        if len(flood_state["messages"]) >= message_threshold and not flood_state["is_handling_flood"]:
             flood_state["is_handling_flood"] = True
             await self._handle_flooding(event, gid, uid, state_key, config)
         else:
@@ -480,7 +485,18 @@ class BanFloodingTheScreenPlugin(Star):
 
     async def _reset_flood_state(self, state_key: str):
         """重置刷屏状态"""
-        await asyncio.sleep(self.detection_period)
+        # 从 state_key 中提取群ID
+        try:
+            gid = int(state_key.split(":")[0])
+            # 获取群级别配置
+            config = self._get_group_config(gid)
+            # 使用群级别配置的 detection_period
+            detection_period = config.get("detection_period", self.detection_period)
+        except (ValueError, IndexError):
+            # 如果提取失败，使用全局配置
+            detection_period = self.detection_period
+        
+        await asyncio.sleep(detection_period)
         flood_state = self.flood_states.get(state_key)
         if flood_state:
             # 重置刷屏处理标志
